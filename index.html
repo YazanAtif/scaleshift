@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Scale Shift: The Inertia Slider</title>
-<meta name="description" content="Scale Shift: A fast-paced physics momentum platformer where you shift mass and inertia on the fly to solve kinetic puzzles.">
+<meta name="description" content="Scale Shift: Fast-paced physics momentum platformer with mass shifting, 7 sectors, and Easy/Medium/Hard modes.">
 <meta name="theme-color" content="#050811">
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <style>
@@ -12,7 +12,7 @@
 *{user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;box-sizing:border-box;touch-action:none}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050811;font-family:'Rajdhani',system-ui,sans-serif;overscroll-behavior:none}
 .hud-font{font-family:'Orbitron','Courier New',monospace}
-.glass-panel{background:rgba(13,20,38,.82);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(56,189,248,.22)}
+.glass-panel{background:rgba(13,20,38,.84);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid rgba(56,189,248,.22)}
 .scale-btn-active{box-shadow:0 0 16px currentColor}
 .touch-only{display:none}
 @media (hover:none) and (pointer:coarse){.touch-only{display:flex}.kbd-hint{display:none!important}}
@@ -24,6 +24,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050811;fon
 #toast.show{opacity:1;transform:translate(-50%,-24px)}
 .safe-b{padding-bottom:env(safe-area-inset-bottom,0px)}
 .safe-t{padding-top:env(safe-area-inset-top,0px)}
+.diff-selected{border-color:currentColor!important;background:rgba(255,255,255,.08)!important;box-shadow:0 0 12px currentColor}
 </style>
 </head>
 <body class="relative w-full h-full text-slate-100">
@@ -34,14 +35,25 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050811;fon
     <div class="flex items-center gap-2 pointer-events-auto flex-wrap">
       <div class="glass-panel px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-lg">
         <span class="hud-font text-cyan-400 font-black text-sm tracking-wider">SCALE SHIFT</span>
-        <span class="text-xs bg-cyan-950/80 text-cyan-300 px-2 py-0.5 rounded font-mono border border-cyan-800/60 font-bold" id="lvl-display">SECTOR 1/4</span>
+        <button id="btn-sector-select" class="text-xs bg-cyan-950/80 text-cyan-300 px-2.5 py-0.5 rounded font-mono border border-cyan-800/60 font-bold hover:bg-cyan-900/60 transition flex items-center gap-1" title="Select Sector">
+          <span id="lvl-display">SECTOR 1/7</span> <span class="text-[9px]">▾</span>
+        </button>
       </div>
+
       <div class="glass-panel px-3 py-1.5 rounded-xl flex items-center gap-3 text-xs font-mono shadow-lg">
         <div><span class="text-slate-400">TIME</span> <span id="time-display" class="text-white font-bold">00:00.0</span></div>
         <div><span class="text-slate-400">BEST</span> <span id="best-display" class="text-amber-400 font-bold">--:--.-</span></div>
         <div><span class="text-slate-400">CORES</span> <span id="cores-display" class="text-yellow-300 font-bold">0/3</span></div>
+        <div id="shield-container" class="hidden"><span class="text-slate-400">SHIELD</span> <span id="shield-display" class="text-emerald-400 font-bold">🛡️ 1</span></div>
       </div>
+
+      <!-- Difficulty Badge / Switcher -->
+      <button id="btn-diff-toggle" class="glass-panel tbtn px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 text-cyan-300 shadow-lg" title="Change Difficulty">
+        <span id="diff-dot" class="w-2 h-2 rounded-full bg-cyan-400"></span>
+        <span id="diff-label">NORMAL</span>
+      </button>
     </div>
+
     <div class="flex items-center gap-2 pointer-events-auto">
       <button id="btn-audio" aria-label="Toggle sound" class="glass-panel tbtn p-2 rounded-xl text-cyan-400 shadow-lg">
         <svg id="audio-icon-on" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
@@ -106,21 +118,56 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050811;fon
     <button id="touch-jump" aria-label="Jump" class="tbtn glass-panel pointer-events-auto w-[84px] h-[68px] rounded-2xl text-white text-sm font-bold hud-font border-emerald-500/40">JUMP</button>
   </div>
 
-  <!-- Intro screen -->
+  <!-- Intro Screen -->
   <div id="intro" class="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-md flex items-center justify-center fade">
-    <div class="glass-panel p-6 rounded-3xl max-w-sm w-full mx-4 text-center border-cyan-500/40 shadow-2xl">
-      <div class="w-16 h-16 mx-auto mb-3 rounded-2xl bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-3xl shadow-[0_0_25px_#38bdf8]">
+    <div class="glass-panel p-6 rounded-3xl max-w-md w-full mx-4 text-center border-cyan-500/40 shadow-2xl">
+      <div class="w-14 h-14 mx-auto mb-2.5 rounded-2xl bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-3xl shadow-[0_0_25px_#38bdf8]">
         ⚡
       </div>
-      <h1 class="hud-font text-2xl font-black text-cyan-400 mb-1">SCALE SHIFT</h1>
-      <p class="text-xs text-slate-400 font-mono mb-4 tracking-widest">THE INERTIA SLIDER</p>
-      <ul class="text-sm text-slate-300 text-left space-y-2 mb-5">
-        <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">TINY:</span> Super light, floats on updrafts, springboards on Bounce Pads.</li>
+      <h1 class="hud-font text-2xl font-black text-cyan-400 mb-0.5">SCALE SHIFT</h1>
+      <p class="text-xs text-slate-400 font-mono mb-4 tracking-widest">THE INERTIA SLIDER • 7 SECTORS</p>
+
+      <!-- Difficulty Selector -->
+      <div class="mb-4 text-left">
+        <div class="text-[10px] text-slate-400 font-mono uppercase tracking-wider mb-1.5 flex justify-between">
+          <span>Choose Difficulty</span>
+          <span id="diff-desc" class="text-cyan-300 font-bold">NORMAL: Standard challenge</span>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <button id="opt-diff-easy" class="diff-btn glass-panel py-2 px-1 rounded-xl text-xs font-bold hud-font text-emerald-400 border border-transparent tbtn">
+            EASY
+            <div class="text-[9px] text-slate-400 font-mono font-normal mt-0.5">🛡️ 1 Shield</div>
+          </button>
+          <button id="opt-diff-medium" class="diff-btn glass-panel py-2 px-1 rounded-xl text-xs font-bold hud-font text-cyan-400 border border-cyan-400/80 bg-cyan-950/40 diff-selected tbtn">
+            MEDIUM
+            <div class="text-[9px] text-slate-400 font-mono font-normal mt-0.5">Balanced</div>
+          </button>
+          <button id="opt-diff-hard" class="diff-btn glass-panel py-2 px-1 rounded-xl text-xs font-bold hud-font text-rose-400 border border-transparent tbtn">
+            HARD
+            <div class="text-[9px] text-slate-400 font-mono font-normal mt-0.5">Hardcore</div>
+          </button>
+        </div>
+      </div>
+
+      <ul class="text-xs text-slate-300 text-left space-y-1.5 mb-5 bg-slate-900/60 p-3 rounded-2xl border border-slate-800">
+        <li class="flex items-start gap-2"><span class="text-emerald-400 font-bold">TINY:</span> Glides on updrafts, shoots up Kinetic Bounce Pads, fits tight ducts.</li>
         <li class="flex items-start gap-2"><span class="text-cyan-400 font-bold">MEDIUM:</span> Balanced momentum &amp; traversal speed.</li>
-        <li class="flex items-start gap-2"><span class="text-rose-400 font-bold">HEAVY:</span> Smashes blast walls at speed, activates mass pads, collapses fragile bridges!</li>
-        <li class="touch-only !block text-xs text-slate-400 pt-1">💡 Tip: Swipe up/down anywhere to shift mass</li>
+        <li class="flex items-start gap-2"><span class="text-rose-400 font-bold">HEAVY:</span> Smashes blast walls at speed, presses heavy switches, crumbles weak bridges!</li>
       </ul>
       <button id="intro-btn" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-bold hud-font tracking-wide shadow-lg shadow-cyan-500/25 active:scale-95 transition">TAP TO START CAMPAIGN</button>
+    </div>
+  </div>
+
+  <!-- Sector Selection Modal -->
+  <div id="sector-modal" class="absolute inset-0 z-35 bg-slate-950/85 backdrop-blur-md flex items-center justify-center fade opacity-0 pointer-events-none">
+    <div class="glass-panel p-5 rounded-3xl max-w-md w-full mx-4 border-cyan-500/40 text-center shadow-2xl">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="hud-font text-lg font-black text-cyan-400">CHOOSE SECTOR</h3>
+        <button id="sector-modal-close" class="text-slate-400 hover:text-white font-mono text-sm px-2 py-1">✕</button>
+      </div>
+      <div id="sector-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[60vh] overflow-y-auto pr-1 text-left">
+        <!-- populated dynamically -->
+      </div>
     </div>
   </div>
 
@@ -131,6 +178,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050811;fon
       <h2 id="modal-title" class="hud-font text-xl font-extrabold text-cyan-400 mb-1">SECTOR SYNCHRONIZED</h2>
       <p id="modal-desc" class="text-sm text-slate-300 mb-4"></p>
       <div class="w-full bg-slate-900/90 rounded-2xl p-3.5 border border-slate-800 text-left mb-5 space-y-1.5 text-xs font-mono">
+        <div class="flex justify-between"><span class="text-slate-400">Difficulty</span><span id="modal-diff" class="text-cyan-400 font-bold">NORMAL</span></div>
         <div class="flex justify-between"><span class="text-slate-400">Clear Time</span><span id="modal-time" class="text-white font-bold">00:00.0</span></div>
         <div class="flex justify-between"><span class="text-slate-400">Flux Cores</span><span id="modal-cores" class="text-yellow-400 font-bold">3/3</span></div>
         <div class="flex justify-between"><span class="text-slate-400">Walls Smashed</span><span id="modal-smashes" class="text-rose-400 font-bold">0</span></div>
@@ -142,12 +190,49 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050811;fon
 </div>
 
 <script>
-// ---------- helpers ----------
+// ---------- helpers & storage ----------
 const $ = (id) => document.getElementById(id);
 const haptic = (pattern) => { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) {} };
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+};
+
+// ---------- difficulty settings ----------
+const DIFFICULTIES = {
+  EASY: {
+    key: 'EASY',
+    name: 'EASY',
+    color: '#34d399',
+    shieldMax: 1,
+    smashMul: 0.72,
+    crumbleFrames: 36,
+    coyoteBonus: 4,
+    parMul: 1.35,
+    desc: 'EASY: 🛡️ 1 Shield, forgiving crumbles & par'
+  },
+  MEDIUM: {
+    key: 'MEDIUM',
+    name: 'NORMAL',
+    color: '#38bdf8',
+    shieldMax: 0,
+    smashMul: 1.0,
+    crumbleFrames: 18,
+    coyoteBonus: 0,
+    parMul: 1.0,
+    desc: 'NORMAL: Standard balanced kinetic physics'
+  },
+  HARD: {
+    key: 'HARD',
+    name: 'HARD',
+    color: '#f43f5e',
+    shieldMax: 0,
+    smashMul: 1.25,
+    crumbleFrames: 10,
+    coyoteBonus: -2,
+    parMul: 0.85,
+    desc: 'HARD: Instant death, fast crumbling, tight par'
+  }
 };
 
 // ---------- audio synthesizer ----------
@@ -179,6 +264,10 @@ class SoundFX {
   playSwitch() { this.tone('square', 140, 220, 0.2, 0.2, 0.08); }
   playCoin() { this.tone('sine', 587.33, 880, 0.3, 0.22, 0.08); }
   playLaserDeath() { this.tone('sawtooth', 620, 60, 0.35, 0.3); }
+  playShieldHit() {
+    this.tone('sawtooth', 350, 120, 0.3, 0.35);
+    setTimeout(() => this.tone('sine', 500, 200, 0.2, 0.25), 50);
+  }
   playPerfect() {
     this.tone('sine', 880, 1318, 0.35, 0.2, 0.1);
     setTimeout(() => this.tone('sine', 1318, 1760, 0.4, 0.2), 120);
@@ -238,7 +327,7 @@ class Particle {
   }
 }
 
-// 4 complete campaign sectors
+// 7 complete campaign sectors
 const LEVELS = [
   // SECTOR 1
   {
@@ -292,7 +381,7 @@ const LEVELS = [
     cores: [{ x: 800, y: 350, collected: false }, { x: 1500, y: 300, collected: false }, { x: 2120, y: 610, collected: false }],
     portal: { x: 3450, y: 530, w: 50, h: 70 }
   },
-  // SECTOR 3: MOMENTUM SLINGSHOT (NEW)
+  // SECTOR 3: MOMENTUM SLINGSHOT
   {
     name: 'Sector 3: Momentum Slingshot', spawn: { x: 120, y: 520 }, bounds: { width: 3900, height: 950 }, par: 75,
     platforms: [
@@ -336,7 +425,7 @@ const LEVELS = [
     ],
     portal: { x: 3700, y: 530, w: 50, h: 70 }
   },
-  // SECTOR 4: GRAVITATIONAL COLLAPSE (NEW)
+  // SECTOR 4: GRAVITATIONAL COLLAPSE
   {
     name: 'Sector 4: Gravitational Collapse', spawn: { x: 100, y: 460 }, bounds: { width: 4400, height: 1000 }, par: 85,
     platforms: [
@@ -385,6 +474,161 @@ const LEVELS = [
       { x: 2600, y: 210, collected: false }
     ],
     portal: { x: 4200, y: 490, w: 50, h: 70 }
+  },
+  // SECTOR 5: SUB-ZERO VECTOR (NEW)
+  {
+    name: 'Sector 5: Sub-Zero Vector', spawn: { x: 100, y: 480 }, bounds: { width: 4600, height: 1000 }, par: 90,
+    platforms: [
+      { x: 0, y: 560, w: 450, h: 100, type: 'ground' },
+      { x: 650, y: 450, w: 300, h: 30, type: 'ground', label: 'PRESSURIZED DUCT' },
+      { x: 1100, y: 580, w: 400, h: 100, type: 'ground' },
+      { x: 1750, y: 340, w: 350, h: 30, type: 'ground', label: 'UPPER BYPASS' },
+      { x: 2350, y: 600, w: 450, h: 100, type: 'ground' },
+      { x: 3000, y: 320, w: 400, h: 30, type: 'ground', label: 'STABILIZER POD' },
+      { x: 3600, y: 580, w: 350, h: 100, type: 'ground' },
+      { x: 4150, y: 560, w: 450, h: 100, type: 'ground' }
+    ],
+    crumbling: [
+      { id: 'c5a', x: 1450, y: 420, w: 180, h: 24, timer: 0, broken: false, label: 'CRYOGENIC FROST' },
+      { id: 'c5b', x: 2050, y: 460, w: 180, h: 24, timer: 0, broken: false, label: 'FRAGILE LATTICE' }
+    ],
+    bouncepads: [
+      { x: 920, y: 568, w: 80, h: 14, force: -20, label: 'VENT ACCELERATOR' },
+      { x: 2650, y: 588, w: 80, h: 14, force: -22, label: 'CATAPULT' },
+      { x: 3450, y: 568, w: 80, h: 14, force: -19, label: 'BOUNCE' }
+    ],
+    destructibles: [
+      { id: 'w5a', x: 1650, y: 240, w: 40, h: 100, hp: 1, broken: false, label: 'FROST WALL' },
+      { id: 'w5b', x: 4050, y: 450, w: 45, h: 110, hp: 1, broken: false, label: 'HEAVY BLAST DOOR' }
+    ],
+    updrafts: [
+      { x: 500, y: 250, w: 90, h: 350, force: -1.45 },
+      { x: 2850, y: 200, w: 90, h: 420, force: -1.5 }
+    ],
+    switches: [
+      { id: 's5', x: 3250, y: 310, w: 90, h: 14, pressed: false, requiredMass: 2.5, targetDoor: 'd5' }
+    ],
+    doors: [
+      { id: 'd5', x: 3900, y: 460, w: 35, h: 120, openYOffset: 0, maxOpen: 120, open: false }
+    ],
+    hazards: [
+      { x: 450, y: 680, w: 650, h: 30, type: 'laser' },
+      { x: 1500, y: 680, w: 850, h: 30, type: 'spikes' },
+      { x: 2800, y: 680, w: 800, h: 30, type: 'laser' }
+    ],
+    cores: [
+      { x: 800, y: 400, collected: false },
+      { x: 1850, y: 290, collected: false },
+      { x: 3200, y: 260, collected: false }
+    ],
+    portal: { x: 4400, y: 490, w: 50, h: 70 }
+  },
+  // SECTOR 6: ORBITAL CENTRIFUGE (NEW)
+  {
+    name: 'Sector 6: Orbital Centrifuge', spawn: { x: 120, y: 450 }, bounds: { width: 4800, height: 1050 }, par: 95,
+    platforms: [
+      { x: 0, y: 520, w: 450, h: 100, type: 'ground' },
+      { x: 650, y: 400, w: 250, h: 30, type: 'ground' },
+      { x: 1100, y: 280, w: 350, h: 30, type: 'ground', label: 'RADIAL TRACK' },
+      { x: 1650, y: 620, w: 500, h: 100, type: 'ground' },
+      { x: 1900, y: 540, w: 240, h: 30, type: 'ceiling', label: 'NARROW INERTIA TUBE' },
+      { x: 2350, y: 380, w: 350, h: 30, type: 'ground' },
+      { x: 2950, y: 640, w: 450, h: 100, type: 'ground' },
+      { x: 3600, y: 300, w: 400, h: 30, type: 'ground', label: 'CENTRIFUGE CORE' },
+      { x: 4250, y: 580, w: 500, h: 100, type: 'ground' }
+    ],
+    crumbling: [
+      { id: 'c6a', x: 920, y: 340, w: 160, h: 22, timer: 0, broken: false, label: 'ORBITAL RING' },
+      { id: 'c6b', x: 2720, y: 440, w: 180, h: 22, timer: 0, broken: false, label: 'HIGH-G LATTICE' },
+      { id: 'c6c', x: 3420, y: 400, w: 160, h: 22, timer: 0, broken: false, label: 'COLLAPSING STRUT' }
+    ],
+    bouncepads: [
+      { x: 480, y: 508, w: 80, h: 14, force: -20, label: 'RADIAL LAUNCHER' },
+      { x: 1480, y: 608, w: 80, h: 14, force: -22, label: 'HYPER SLING' },
+      { x: 3250, y: 628, w: 80, h: 14, force: -23, label: 'APEX SPRING' }
+    ],
+    destructibles: [
+      { id: 'w6a', x: 1040, y: 190, w: 40, h: 90, hp: 1, broken: false, label: 'RAM WALL' },
+      { id: 'w6b', x: 2280, y: 290, w: 40, h: 90, hp: 1, broken: false, label: 'BULKHEAD' },
+      { id: 'w6c', x: 4150, y: 460, w: 50, h: 120, hp: 1, broken: false, label: 'TITAN GATE' }
+    ],
+    updrafts: [
+      { x: 2180, y: 260, w: 90, h: 400, force: -1.5 }
+    ],
+    switches: [
+      { id: 's6', x: 3850, y: 290, w: 90, h: 14, pressed: false, requiredMass: 2.5, targetDoor: 'd6' }
+    ],
+    doors: [
+      { id: 'd6', x: 4250, y: 460, w: 35, h: 120, openYOffset: 0, maxOpen: 120, open: false }
+    ],
+    hazards: [
+      { x: 450, y: 680, w: 1000, h: 30, type: 'laser' },
+      { x: 1600, y: 260, w: 200, h: 16, type: 'laser' },
+      { x: 2150, y: 680, w: 800, h: 30, type: 'spikes' },
+      { x: 3400, y: 680, w: 800, h: 30, type: 'laser' }
+    ],
+    cores: [
+      { x: 1250, y: 220, collected: false },
+      { x: 2000, y: 590, collected: false },
+      { x: 3750, y: 240, collected: false }
+    ],
+    portal: { x: 4550, y: 510, w: 50, h: 70 }
+  },
+  // SECTOR 7: SINGULARITY CORE (GRAND CLIMAX)
+  {
+    name: 'Sector 7: Singularity Core', spawn: { x: 120, y: 440 }, bounds: { width: 5200, height: 1100 }, par: 110,
+    platforms: [
+      { x: 0, y: 500, w: 420, h: 100, type: 'ground' },
+      { x: 550, y: 350, w: 280, h: 30, type: 'ground', label: 'INNER SANCTUM' },
+      { x: 1050, y: 220, w: 320, h: 30, type: 'ground', label: 'GRAVITY APEX' },
+      { x: 1550, y: 640, w: 450, h: 100, type: 'ground' },
+      { x: 1780, y: 560, w: 200, h: 30, type: 'ceiling', label: 'SUB-ATOMIC DUCT' },
+      { x: 2200, y: 420, w: 300, h: 30, type: 'ground' },
+      { x: 2750, y: 260, w: 420, h: 30, type: 'ground', label: 'COMMAND REACTOR' },
+      { x: 3450, y: 620, w: 500, h: 100, type: 'ground' },
+      { x: 4250, y: 360, w: 350, h: 30, type: 'ground', label: 'LAUNCH DECK' },
+      { x: 4700, y: 560, w: 500, h: 100, type: 'ground' }
+    ],
+    crumbling: [
+      { id: 'c7a', x: 850, y: 280, w: 180, h: 22, timer: 0, broken: false, label: 'SINGULARITY BRIDGE' },
+      { id: 'c7b', x: 2000, y: 500, w: 180, h: 22, timer: 0, broken: false, label: 'UNSTABLE MATTER' },
+      { id: 'c7c', x: 2520, y: 340, w: 200, h: 22, timer: 0, broken: false, label: 'DECAYING LATTICE' },
+      { id: 'c7d', x: 4000, y: 460, w: 220, h: 22, timer: 0, broken: false, label: 'CRUMBLING CATWALK' }
+    ],
+    bouncepads: [
+      { x: 440, y: 488, w: 80, h: 14, force: -21, label: 'GRAVITY SPRING' },
+      { x: 1400, y: 628, w: 80, h: 14, force: -22, label: 'TITAN PAD' },
+      { x: 3250, y: 608, w: 80, h: 14, force: -24, label: 'HYPER ACCELERATOR' }
+    ],
+    destructibles: [
+      { id: 'w7a', x: 990, y: 130, w: 40, h: 90, hp: 1, broken: false, label: 'RAM' },
+      { id: 'w7b', x: 2690, y: 170, w: 40, h: 90, hp: 1, broken: false, label: 'REINFORCED' },
+      { id: 'w7c', x: 4620, y: 440, w: 55, h: 120, hp: 1, broken: false, label: 'SINGULARITY BULKHEAD' }
+    ],
+    updrafts: [
+      { x: 1350, y: 200, w: 90, h: 440, force: -1.5 },
+      { x: 3350, y: 240, w: 90, h: 400, force: -1.55 }
+    ],
+    switches: [
+      { id: 's7a', x: 3000, y: 250, w: 90, h: 14, pressed: false, requiredMass: 2.5, targetDoor: 'd7a' },
+      { id: 's7b', x: 4450, y: 350, w: 90, h: 14, pressed: false, requiredMass: 2.5, targetDoor: 'd7b' }
+    ],
+    doors: [
+      { id: 'd7a', x: 3450, y: 500, w: 35, h: 120, openYOffset: 0, maxOpen: 120, open: false },
+      { id: 'd7b', x: 4700, y: 440, w: 35, h: 120, openYOffset: 0, maxOpen: 120, open: false }
+    ],
+    hazards: [
+      { x: 400, y: 700, w: 1000, h: 30, type: 'laser' },
+      { x: 1080, y: 200, w: 200, h: 16, type: 'laser' },
+      { x: 2050, y: 700, w: 1200, h: 30, type: 'laser' },
+      { x: 3950, y: 700, w: 750, h: 30, type: 'spikes' }
+    ],
+    cores: [
+      { x: 1180, y: 160, collected: false },
+      { x: 2350, y: 370, collected: false },
+      { x: 4380, y: 300, collected: false }
+    ],
+    portal: { x: 5000, y: 490, w: 55, h: 75 }
   }
 ];
 
@@ -398,6 +642,7 @@ class Player {
     this.grounded = false; this.inUpdraft = false;
     this.coyote = 0; this.jumpBuf = 0; this.jumpWas = false;
     this.trailTimer = 0;
+    this.invulnerableUntil = 0;
   }
 
   setForm(key, silent) {
@@ -421,7 +666,7 @@ class Player {
     return 0.5 * this.currentForm.mass * (this.vx * this.vx + this.vy * this.vy) * 100;
   }
 
-  update(keys, level, particles, shake, fx) {
+  update(keys, level, particles, shake, fx, diff) {
     this.visualRadius += (this.targetForm.radius - this.visualRadius) * 0.18;
     this.visualScale += (this.targetForm.scale - this.visualScale) * 0.18;
     this.currentForm = this.targetForm;
@@ -463,8 +708,9 @@ class Player {
       }
     }
 
-    // jump mechanics: coyote + input buffer
-    if (this.grounded) this.coyote = COYOTE_FRAMES; else if (this.coyote > 0) this.coyote--;
+    // jump mechanics: coyote + input buffer with difficulty modifier
+    const maxCoyote = Math.max(2, COYOTE_FRAMES + (diff.coyoteBonus || 0));
+    if (this.grounded) this.coyote = maxCoyote; else if (this.coyote > 0) this.coyote--;
     if (keys.jump && !this.jumpWas) this.jumpBuf = BUFFER_FRAMES; else if (this.jumpBuf > 0) this.jumpBuf--;
     this.jumpWas = keys.jump;
     if (this.jumpBuf > 0 && this.coyote > 0) {
@@ -477,8 +723,8 @@ class Player {
     if (!keys.jump && this.vy < -3 && !this.inUpdraft) this.vy += g * 0.6;
 
     // integrate movement & collision
-    this.x += this.vx; this.resolveX(level, particles, shake, fx);
-    this.y += this.vy; this.grounded = false; this.resolveY(level, particles, shake, fx);
+    this.x += this.vx; this.resolveX(level, particles, shake, fx, diff);
+    this.y += this.vy; this.grounded = false; this.resolveY(level, particles, shake, fx, diff);
 
     this.rotation += this.vx / (r || 1);
     this.squishX += (1 - this.squishX) * 0.12;
@@ -506,12 +752,13 @@ class Player {
     for (let p = 0; p < 24; p++) particles.push(new Particle(wall.x + Math.random() * wall.w, wall.y + Math.random() * wall.h, (Math.random() - 0.5) * 10 + dx, (Math.random() - 0.7) * 9 + dy, '#fb7185', 4 + Math.random() * 5, 45, true));
   }
 
-  resolveX(level, particles, shake, fx) {
+  resolveX(level, particles, shake, fx, diff) {
     const r = this.visualRadius, ke = this.getKineticEnergy();
+    const threshold = this.currentForm.smashThreshold * (diff.smashMul || 1.0);
     for (const w of (level.destructibles || [])) {
       if (w.broken) continue;
       if (this.x + r > w.x && this.x - r < w.x + w.w && this.y + r > w.y && this.y - r < w.y + w.h) {
-        if (ke >= this.currentForm.smashThreshold && this.currentForm.name === 'HEAVY') {
+        if (ke >= threshold && this.currentForm.name === 'HEAVY') {
           this.smashWall(w, particles, shake, fx, Math.sign(this.vx) * 4, 0, 12);
           this.vx *= 0.6; continue;
         }
@@ -527,12 +774,13 @@ class Player {
     }
   }
 
-  resolveY(level, particles, shake, fx) {
+  resolveY(level, particles, shake, fx, diff) {
     const r = this.visualRadius, ke = this.getKineticEnergy();
+    const threshold = this.currentForm.smashThreshold * (diff.smashMul || 1.0);
     for (const w of (level.destructibles || [])) {
       if (w.broken) continue;
       if (this.x + r > w.x && this.x - r < w.x + w.w && this.y + r > w.y && this.y - r < w.y + w.h) {
-        if (this.vy > 0 && ke >= this.currentForm.smashThreshold && this.currentForm.name === 'HEAVY') {
+        if (this.vy > 0 && ke >= threshold && this.currentForm.name === 'HEAVY') {
           this.smashWall(w, particles, shake, fx, 0, 0, 14);
           this.vy *= 0.3; continue;
         }
@@ -551,11 +799,11 @@ class Player {
           }
           this.vy = 0; this.grounded = true;
 
-          // Crumbling platform check
+          // Crumbling platform check with difficulty-adjusted frames
           if (b.isCrumbling) {
             const cp = b.isCrumbling;
             if (this.currentForm.name === 'HEAVY' && cp.timer === 0 && !cp.broken) {
-              cp.timer = 18; // ~300ms till collapse
+              cp.timer = diff.crumbleFrames || 18;
               sfx.playCrumble();
               shake(4, 12);
               fx.toast('OVERWEIGHT! COLLAPSE IMMINENT', '#f59e0b');
@@ -572,6 +820,15 @@ class Player {
     ctx.scale(this.squishX, this.squishY);
     ctx.rotate(this.rotation);
     const r = this.visualRadius, f = this.currentForm;
+
+    // Invulnerability shield bubble if protected
+    if (performance.now() < this.invulnerableUntil) {
+      const pulse = 0.5 + Math.sin(performance.now() * 0.02) * 0.4;
+      ctx.strokeStyle = `rgba(56,189,248,${pulse})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, r * 1.45, 0, Math.PI * 2); ctx.stroke();
+    }
+
     const glow = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 1.5);
     glow.addColorStop(0, f.glow); glow.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, r * 1.5, 0, Math.PI * 2); ctx.fill();
@@ -599,11 +856,49 @@ class GameEngine {
     this.acc = 0; this.lastTs = 0; this.lastWheel = 0; this.toastTimer = 0;
     this.keys = { left: false, right: false, jump: false };
     this.fx = { toast: (t, c) => this.showToast(t, c) };
+
+    // difficulty initialization
+    const savedDiff = store.get('scaleshift_diff') || 'MEDIUM';
+    this.difficulty = DIFFICULTIES[savedDiff] || DIFFICULTIES.MEDIUM;
+    this.shieldsRemaining = this.difficulty.shieldMax;
+
     this.resize();
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 150));
     this.bindInputs();
+    this.updateDifficultyUI();
+    this.renderSectorGrid();
     this.loadLevel(0);
+  }
+
+  setDifficulty(key) {
+    if (!DIFFICULTIES[key]) return;
+    this.difficulty = DIFFICULTIES[key];
+    store.set('scaleshift_diff', key);
+    this.shieldsRemaining = this.difficulty.shieldMax;
+    this.updateDifficultyUI();
+    this.updateBestDisplay();
+    this.showToast(`DIFFICULTY: ${this.difficulty.name}`, this.difficulty.color);
+  }
+
+  updateDifficultyUI() {
+    $('diff-label').textContent = this.difficulty.name;
+    $('diff-dot').style.backgroundColor = this.difficulty.color;
+    $('diff-desc').textContent = this.difficulty.desc;
+
+    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('diff-selected', 'border-cyan-400/80', 'bg-cyan-950/40'));
+    const activeBtn = $('opt-diff-' + (this.difficulty.key === 'MEDIUM' ? 'medium' : this.difficulty.key.toLowerCase()));
+    if (activeBtn) activeBtn.classList.add('diff-selected', 'border-cyan-400/80', 'bg-cyan-950/40');
+
+    // Shield HUD
+    const sCont = $('shield-container');
+    if (this.difficulty.shieldMax > 0) {
+      sCont.classList.remove('hidden');
+      $('shield-display').textContent = `🛡️ ${this.shieldsRemaining}`;
+      $('shield-display').style.color = this.shieldsRemaining > 0 ? '#34d399' : '#94a3b8';
+    } else {
+      sCont.classList.add('hidden');
+    }
   }
 
   resize() {
@@ -628,6 +923,28 @@ class GameEngine {
     $('intro').classList.add('opacity-0', 'pointer-events-none');
     this.startTime = performance.now();
     this.timerRunning = true;
+  }
+
+  renderSectorGrid() {
+    const grid = $('sector-grid');
+    grid.innerHTML = '';
+    LEVELS.forEach((lvl, idx) => {
+      const best = store.get(`scaleshift_best_${this.difficulty.key}_lvl_${idx}`);
+      const btn = document.createElement('button');
+      btn.className = `glass-panel p-3 rounded-2xl text-left tbtn hover:border-cyan-400/60 transition ${idx === this.currentLevelIdx ? 'border-cyan-400 bg-cyan-950/50' : ''}`;
+      btn.innerHTML = `
+        <div class="flex justify-between items-center mb-1">
+          <span class="hud-font text-xs font-bold ${idx === this.currentLevelIdx ? 'text-cyan-300' : 'text-slate-200'}">SECTOR ${idx + 1}</span>
+          <span class="text-[10px] font-mono text-amber-400">${best ? this.formatTime(parseInt(best)) : '--:--.-'}</span>
+        </div>
+        <div class="text-[11px] text-slate-400 truncate">${lvl.name.split(': ')[1] || lvl.name}</div>
+      `;
+      btn.addEventListener('click', () => {
+        $('sector-modal').classList.add('opacity-0', 'pointer-events-none');
+        this.loadLevel(idx);
+      });
+      grid.appendChild(btn);
+    });
   }
 
   bindInputs() {
@@ -673,6 +990,28 @@ class GameEngine {
 
     ['tiny', 'medium', 'heavy'].forEach(n => $('btn-scale-' + n).addEventListener('click', () => { sfx.init(); this.player.setForm(n.toUpperCase()); }));
 
+    // Difficulty buttons
+    $('opt-diff-easy').addEventListener('click', () => { sfx.init(); this.setDifficulty('EASY'); });
+    $('opt-diff-medium').addEventListener('click', () => { sfx.init(); this.setDifficulty('MEDIUM'); });
+    $('opt-diff-hard').addEventListener('click', () => { sfx.init(); this.setDifficulty('HARD'); });
+
+    $('btn-diff-toggle').addEventListener('click', () => {
+      sfx.init();
+      const keys = ['EASY', 'MEDIUM', 'HARD'];
+      const next = keys[(keys.indexOf(this.difficulty.key) + 1) % 3];
+      this.setDifficulty(next);
+    });
+
+    // Sector select modal
+    $('btn-sector-select').addEventListener('click', () => {
+      sfx.init();
+      this.renderSectorGrid();
+      $('sector-modal').classList.remove('opacity-0', 'pointer-events-none');
+    });
+    $('sector-modal-close').addEventListener('click', () => {
+      $('sector-modal').classList.add('opacity-0', 'pointer-events-none');
+    });
+
     $('btn-audio').addEventListener('click', () => {
       sfx.init(); sfx.muted = !sfx.muted;
       $('audio-icon-on').classList.toggle('hidden', sfx.muted);
@@ -715,6 +1054,9 @@ class GameEngine {
     if (!this.level.bouncepads) this.level.bouncepads = [];
     if (!this.level.crumbling) this.level.crumbling = [];
 
+    this.shieldsRemaining = this.difficulty.shieldMax;
+    this.updateDifficultyUI();
+
     this.player = new Player(this.level.spawn.x, this.level.spawn.y);
     this.particles = [];
     this.startTime = performance.now();
@@ -747,7 +1089,7 @@ class GameEngine {
   }
 
   updateBestDisplay() {
-    const best = store.get(`scaleshift_best_lvl_${this.currentLevelIdx}`);
+    const best = store.get(`scaleshift_best_${this.difficulty.key}_lvl_${this.currentLevelIdx}`);
     $('best-display').textContent = best ? this.formatTime(parseInt(best)) : '--:--.-';
   }
 
@@ -775,9 +1117,26 @@ class GameEngine {
         if (d.openYOffset < d.maxOpen) d.openYOffset += 3.5;
       }
     }
-    // hazards
+    // hazards with Easy mode shield protection
     for (const h of (this.level.hazards || [])) {
-      if (p.x + r > h.x && p.x - r < h.x + h.w && p.y + r > h.y && p.y - r < h.y + h.h) { this.die(); return; }
+      if (p.x + r > h.x && p.x - r < h.x + h.w && p.y + r > h.y && p.y - r < h.y + h.h) {
+        if (performance.now() < p.invulnerableUntil) return;
+        if (this.difficulty.shieldMax > 0 && this.shieldsRemaining > 0) {
+          this.shieldsRemaining--;
+          p.invulnerableUntil = performance.now() + 1500;
+          p.vy = -10;
+          p.vx = -Math.sign(p.vx || 1) * 4;
+          sfx.playShieldHit();
+          this.triggerShake(8, 14);
+          this.showToast('🛡️ SHIELD BROKEN - BE CAREFUL!', '#f59e0b');
+          for (let i = 0; i < 20; i++) {
+            this.particles.push(new Particle(p.x, p.y, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, '#34d399', 3, 30));
+          }
+          this.updateDifficultyUI();
+          return;
+        }
+        this.die(); return;
+      }
     }
     // fall out of bounds
     if (p.y > this.level.bounds.height + 150) { this.die(); return; }
@@ -803,24 +1162,27 @@ class GameEngine {
     this.completed = true; this.timerRunning = false;
     const total = this.level.cores.length;
     const secs = this.elapsedMs / 1000;
-    const perfect = collected === total && secs <= this.level.par;
+    const adjPar = Math.round(this.level.par * (this.difficulty.parMul || 1.0));
+    const perfect = collected === total && secs <= adjPar;
     const rating = perfect ? 'PERFECT' : collected === total ? 'GREAT' : 'GOOD';
     sfx.playCoin(); if (perfect) sfx.playPerfect(); haptic(perfect ? [20, 40, 20, 40, 60] : 30);
 
-    const key = `scaleshift_best_lvl_${this.currentLevelIdx}`;
+    const key = `scaleshift_best_${this.difficulty.key}_lvl_${this.currentLevelIdx}`;
     const prev = store.get(key);
     if (!prev || this.elapsedMs < parseInt(prev)) store.set(key, String(Math.round(this.elapsedMs)));
     this.updateBestDisplay();
 
     const isLast = this.currentLevelIdx + 1 >= LEVELS.length;
     $('modal-icon').textContent = isLast ? '🏆' : '💠';
-    $('modal-title').textContent = isLast ? 'ALL SECTORS CLEARED!' : 'SECTOR SYNCHRONIZED';
-    $('modal-desc').textContent = isLast ? 'Mastery of mass and inertia achieved across all sectors!' : 'Mass resonance stable. Proceeding to next quarantine zone.';
+    $('modal-title').textContent = isLast ? 'ALL 7 SECTORS MASTERED!' : 'SECTOR SYNCHRONIZED';
+    $('modal-desc').textContent = isLast ? 'You have completely conquered the Singularity Core!' : 'Mass resonance stable. Proceeding to next quarantine zone.';
+    $('modal-diff').textContent = this.difficulty.name;
+    $('modal-diff').style.color = this.difficulty.color;
     $('modal-time').textContent = this.formatTime(this.elapsedMs);
     $('modal-cores').textContent = `${collected}/${total}`;
     $('modal-smashes').textContent = (this.level.destructibles || []).filter(w => w.broken).length;
     const rt = $('modal-rating');
-    rt.textContent = perfect ? `PERFECT ★ (par ${this.level.par}s)` : rating;
+    rt.textContent = perfect ? `PERFECT ★ (par ${adjPar}s)` : rating;
     rt.style.color = perfect ? '#fde047' : rating === 'GREAT' ? '#34d399' : '#fbbf24';
     $('modal-action-btn').textContent = isLast ? 'REPLAY CAMPAIGN ↺' : 'NEXT SECTOR ➔';
     $('modal-overlay').classList.remove('opacity-0', 'pointer-events-none');
@@ -852,7 +1214,7 @@ class GameEngine {
 
     if (!this.started) return;
     if (this.dead) { if (performance.now() > this.deadUntil) this.restartLevel(); return; }
-    this.player.update(this.keys, this.level, this.particles, (m, d) => this.triggerShake(m, d), this.fx);
+    this.player.update(this.keys, this.level, this.particles, (m, d) => this.triggerShake(m, d), this.fx, this.difficulty);
     this.updateEnvironment();
   }
 
@@ -1034,9 +1396,10 @@ class GameEngine {
     const ke = Math.round(this.player.getKineticEnergy());
     $('ke-val').textContent = `${ke} J`;
     $('ke-bar').style.width = `${Math.min(100, ke / 3000 * 100)}%`;
-    $('ke-mark').style.left = `${Math.min(100, f.smashThreshold / 3000 * 100)}%`;
+    const threshold = f.smashThreshold * (this.difficulty.smashMul || 1.0);
+    $('ke-mark').style.left = `${Math.min(100, threshold / 3000 * 100)}%`;
     $('ke-mark').style.display = f.name === 'TINY' ? 'none' : 'block';
-    $('smash-ready-tag').classList.toggle('opacity-0', !(ke >= f.smashThreshold && f.name === 'HEAVY'));
+    $('smash-ready-tag').classList.toggle('opacity-0', !(ke >= threshold && f.name === 'HEAVY'));
   }
 
   loop(now) {
