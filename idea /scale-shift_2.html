@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Scale Shift: The Inertia Slider</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap');
+*{user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;box-sizing:border-box;touch-action:none}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050811;font-family:'Rajdhani',system-ui,sans-serif;overscroll-behavior:none}
+.hud-font{font-family:'Orbitron','Courier New',monospace}
+.glass-panel{background:rgba(13,20,38,.75);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid rgba(56,189,248,.2)}
+.scale-btn-active{box-shadow:0 0 15px currentColor}
+.touch-only{display:none}
+@media (hover:none) and (pointer:coarse){.touch-only{display:flex}.kbd-hint{display:none!important}}
+.tbtn{transition:transform .08s,background .08s,box-shadow .08s}
+.tbtn.down{background:rgba(56,189,248,.38);transform:scale(.92);box-shadow:0 0 18px rgba(56,189,248,.5)}
+.fade{transition:opacity .35s ease}
+#flash{position:absolute;inset:0;z-index:25;pointer-events:none;background:radial-gradient(circle,transparent 30%,rgba(244,63,94,.55));opacity:0;transition:opacity .4s}
+#toast{position:absolute;left:50%;top:30%;transform:translate(-50%,0);z-index:22;pointer-events:none;opacity:0;font-family:'Orbitron',monospace;font-weight:900;letter-spacing:.15em;text-shadow:0 0 14px currentColor;transition:opacity .25s,transform .6s}
+#toast.show{opacity:1;transform:translate(-50%,-26px)}
+.safe-b{padding-bottom:env(safe-area-inset-bottom,0px)}
+.safe-t{padding-top:env(safe-area-inset-top,0px)}
+</style>
+</head>
+<body class="relative w-full h-full text-slate-100">
+<div class="relative w-full h-full overflow-hidden">
+
+  <header class="safe-t absolute top-0 left-0 right-0 z-20 flex items-start justify-between px-3 pt-2 pointer-events-none">
+    <div class="flex items-center gap-2 pointer-events-auto flex-wrap">
+      <div class="glass-panel px-3 py-1.5 rounded-lg flex items-center gap-2">
+        <span class="hud-font text-cyan-400 font-bold text-sm tracking-wider">SCALE SHIFT</span>
+        <span class="text-xs bg-cyan-950/80 text-cyan-300 px-2 py-0.5 rounded font-mono border border-cyan-800/60" id="lvl-display">SECTOR 1</span>
+      </div>
+      <div class="glass-panel px-3 py-1.5 rounded-lg flex items-center gap-3 text-xs font-mono">
+        <div><span class="text-slate-400">TIME</span> <span id="time-display" class="text-white font-bold">00:00.0</span></div>
+        <div><span class="text-slate-400">BEST</span> <span id="best-display" class="text-amber-400 font-bold">--:--.-</span></div>
+        <div><span class="text-slate-400">CORES</span> <span id="cores-display" class="text-yellow-300 font-bold">0/3</span></div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 pointer-events-auto">
+      <button id="btn-audio" aria-label="Toggle sound" class="glass-panel tbtn p-2 rounded-lg text-cyan-400">
+        <svg id="audio-icon-on" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg>
+        <svg id="audio-icon-off" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/></svg>
+      </button>
+      <button id="btn-reset" class="glass-panel tbtn px-3 py-2 rounded-lg text-xs font-semibold text-slate-200" title="Restart [R]">RESTART</button>
+    </div>
+  </header>
+
+  <!-- Center gauges -->
+  <div class="safe-t absolute left-1/2 -translate-x-1/2 z-20 pointer-events-none flex flex-col items-center" style="top:62px">
+    <div class="glass-panel px-4 py-2 rounded-xl flex items-center gap-4 shadow-lg">
+      <div class="flex flex-col items-center"><span class="text-[10px] text-slate-400 font-mono tracking-wider">MASS</span><span id="mass-label" class="hud-font text-xs font-bold text-cyan-400">1.00 M</span></div>
+      <div class="w-px h-6 bg-slate-700/60"></div>
+      <div class="flex flex-col items-center">
+        <div class="flex justify-between w-28 text-[10px] text-slate-400 font-mono"><span>KINETIC</span><span id="ke-val" class="text-white">0 J</span></div>
+        <div class="relative w-28 h-2 bg-slate-900 rounded-full overflow-hidden mt-1 border border-slate-700/50">
+          <div id="ke-bar" class="h-full bg-gradient-to-r from-cyan-500 via-amber-400 to-rose-500" style="width:0"></div>
+          <div id="ke-mark" class="absolute top-0 bottom-0 w-px bg-white/70" style="left:100%"></div>
+        </div>
+      </div>
+      <div class="w-px h-6 bg-slate-700/60"></div>
+      <div class="flex flex-col items-center"><span class="text-[10px] text-slate-400 font-mono tracking-wider">SPEED</span><span id="speed-label" class="hud-font text-xs font-bold text-emerald-400">0.0</span></div>
+    </div>
+    <div id="smash-ready-tag" class="mt-1 text-[10px] font-bold text-amber-400 uppercase tracking-widest fade opacity-0 hud-font animate-pulse">⚡ BREACH MOMENTUM READY ⚡</div>
+  </div>
+
+  <canvas id="game-canvas" class="w-full h-full block"></canvas>
+  <div id="flash"></div>
+  <div id="toast" class="text-xl"></div>
+
+  <!-- Bottom dock -->
+  <div class="safe-b absolute bottom-3 left-0 right-0 z-20 flex flex-col items-center pointer-events-none px-3">
+    <div class="glass-panel p-1.5 rounded-2xl flex items-center gap-1.5 pointer-events-auto shadow-2xl">
+      <button id="btn-scale-tiny" class="scale-selector tbtn px-3 py-1.5 rounded-xl flex items-center gap-2 text-emerald-400 border border-transparent">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block shadow-[0_0_8px_#34d399]"></span>
+        <div class="text-left"><div class="text-xs font-bold hud-font leading-none">TINY</div><div class="text-[9px] text-slate-400 font-mono">[1] Float</div></div>
+      </button>
+      <button id="btn-scale-medium" class="scale-selector tbtn px-3 py-1.5 rounded-xl flex items-center gap-2 text-cyan-400 border border-cyan-400/80 bg-cyan-950/40 scale-btn-active">
+        <span class="w-3.5 h-3.5 rounded-full bg-cyan-400 inline-block shadow-[0_0_10px_#38bdf8]"></span>
+        <div class="text-left"><div class="text-xs font-bold hud-font leading-none">MEDIUM</div><div class="text-[9px] text-slate-400 font-mono">[2] Normal</div></div>
+      </button>
+      <button id="btn-scale-heavy" class="scale-selector tbtn px-3 py-1.5 rounded-xl flex items-center gap-2 text-rose-400 border border-transparent">
+        <span class="w-5 h-5 rounded-full bg-rose-500 inline-block shadow-[0_0_12px_#f43f5e]"></span>
+        <div class="text-left"><div class="text-xs font-bold hud-font leading-none">HEAVY</div><div class="text-[9px] text-slate-400 font-mono">[3] Smash</div></div>
+      </button>
+    </div>
+    <div class="kbd-hint mt-2 text-[11px] text-slate-400 font-mono hidden md:flex items-center gap-4 bg-slate-900/60 px-3 py-1 rounded-full border border-slate-800/80">
+      <span><b class="text-slate-200">A / D / ← →</b> Roll</span><span>•</span>
+      <span><b class="text-slate-200">W / ↑ / Space</b> Jump (hold = higher)</span><span>•</span>
+      <span><b class="text-slate-200">1 2 3</b> / <b class="text-slate-200">Shift</b> / <b class="text-slate-200">Wheel</b> Shift Mass</span>
+    </div>
+  </div>
+
+  <!-- Touch controls -->
+  <div id="touch-controls" class="touch-only absolute left-3 right-3 z-20 justify-between items-end pointer-events-none" style="bottom:calc(86px + env(safe-area-inset-bottom,0px))">
+    <div class="flex gap-3 pointer-events-auto">
+      <button id="touch-left" aria-label="Roll left" class="tbtn glass-panel w-[68px] h-[68px] rounded-2xl text-white text-2xl font-bold border-cyan-500/40">◀</button>
+      <button id="touch-right" aria-label="Roll right" class="tbtn glass-panel w-[68px] h-[68px] rounded-2xl text-white text-2xl font-bold border-cyan-500/40">▶</button>
+    </div>
+    <button id="touch-jump" aria-label="Jump" class="tbtn glass-panel pointer-events-auto w-[84px] h-[68px] rounded-2xl text-white text-sm font-bold hud-font border-emerald-500/40">JUMP</button>
+  </div>
+
+  <!-- Intro -->
+  <div id="intro" class="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-md flex items-center justify-center fade">
+    <div class="glass-panel p-6 rounded-3xl max-w-sm w-full mx-4 text-center border-cyan-500/40 shadow-2xl">
+      <h1 class="hud-font text-2xl font-black text-cyan-400 mb-1">SCALE SHIFT</h1>
+      <p class="text-xs text-slate-400 font-mono mb-4 tracking-widest">THE INERTIA SLIDER</p>
+      <ul class="text-sm text-slate-300 text-left space-y-1.5 mb-5">
+        <li><span class="text-emerald-400 font-bold">TINY</span> rides air vents &amp; squeezes through ducts</li>
+        <li><span class="text-rose-400 font-bold">HEAVY</span> smashes red walls at speed &amp; presses mass pads</li>
+        <li class="touch-only !block text-slate-400">Swipe up / down anywhere to shift mass</li>
+      </ul>
+      <button id="intro-btn" class="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-bold hud-font tracking-wide shadow-lg shadow-cyan-500/25 active:scale-95 transition">TAP TO START</button>
+    </div>
+  </div>
+
+  <!-- Victory modal -->
+  <div id="modal-overlay" class="absolute inset-0 z-30 bg-slate-950/85 backdrop-blur-md flex items-center justify-center fade opacity-0 pointer-events-none">
+    <div class="glass-panel p-6 rounded-3xl max-w-sm w-full mx-4 border-cyan-500/40 text-center flex flex-col items-center shadow-2xl">
+      <div class="w-16 h-16 rounded-full bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-2xl mb-3 shadow-[0_0_20px_#38bdf8]">💠</div>
+      <h2 id="modal-title" class="hud-font text-xl font-extrabold text-cyan-400 mb-1">CHAMBER CLEARED</h2>
+      <p id="modal-desc" class="text-sm text-slate-300 mb-4"></p>
+      <div class="w-full bg-slate-900/90 rounded-xl p-3 border border-slate-800 text-left mb-5 space-y-1 text-xs font-mono">
+        <div class="flex justify-between"><span class="text-slate-400">Time</span><span id="modal-time" class="text-white font-bold">00:00.0</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Flux Cores</span><span id="modal-cores" class="text-yellow-400 font-bold">3/3</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Walls Smashed</span><span id="modal-smashes" class="text-rose-400 font-bold">0</span></div>
+        <div class="flex justify-between"><span class="text-slate-400">Rating</span><span id="modal-rating" class="text-amber-300 font-bold">GOOD</span></div>
+      </div>
+      <button id="modal-action-btn" class="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-bold text-sm hud-font tracking-wide shadow-lg shadow-cyan-500/25 active:scale-95 transition">NEXT SECTOR</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- helpers ----------
+const $ = (id) => document.getElementById(id);
+const haptic = (ms) => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} };
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+};
+
+// ---------- audio ----------
+class SoundFX {
+  constructor() { this.ctx = null; this.muted = false; }
+  init() {
+    if (!this.ctx) { const C = window.AudioContext || window.webkitAudioContext; if (C) this.ctx = new C(); }
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  }
+  tone(type, f0, f1, dur, vol, delayF) {
+    if (this.muted || !this.ctx) return;
+    const t = this.ctx.currentTime, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f0, t);
+    if (delayF) o.frequency.setValueAtTime(f1, t + delayF);
+    else if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.85);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(this.ctx.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  playJump(scale) { const f = 220 + (1.2 - scale) * 260; this.tone('triangle', f, f * 1.8, 0.18, 0.2); }
+  playShift(to) { this.tone('sawtooth', to === 'HEAVY' ? 500 : to === 'TINY' ? 300 : 400, to === 'HEAVY' ? 150 : to === 'TINY' ? 900 : 420, 0.22, 0.12); }
+  playSwitch() { this.tone('square', 120, 180, 0.2, 0.2, 0.1); }
+  playCoin() { this.tone('sine', 587.33, 880, 0.3, 0.22, 0.08); }
+  playLaserDeath() { this.tone('sawtooth', 600, 60, 0.32, 0.3); }
+  playPerfect() { this.tone('sine', 880, 1318, 0.35, 0.2, 0.1); }
+  playSmash() {
+    if (this.muted || !this.ctx) return;
+    this.tone('sine', 140, 35, 0.38, 0.5);
+    const t = this.ctx.currentTime, n = this.ctx.sampleRate * 0.25;
+    const buf = this.ctx.createBuffer(1, n, this.ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+    const src = this.ctx.createBufferSource(), f = this.ctx.createBiquadFilter(), g = this.ctx.createGain();
+    src.buffer = buf; f.type = 'lowpass';
+    f.frequency.setValueAtTime(800, t); f.frequency.linearRampToValueAtTime(150, t + 0.25);
+    g.gain.setValueAtTime(0.35, t); g.gain.exponentialRampToValueAtTime(0.01, t + 0.25);
+    src.connect(f); f.connect(g); g.connect(this.ctx.destination); src.start(t);
+  }
+}
+const sfx = new SoundFX();
+
+// ---------- config ----------
+const FORMS = {
+  TINY:   { name: 'TINY',   scale: 0.45, radius: 12, mass: 0.4, speed: 6.8, accel: 0.85, friction: 0.88, jumpImpulse: -11.5, gravityMul: 0.65, color: '#34d399', glow: 'rgba(52,211,153,.8)', smashThreshold: 99999 },
+  MEDIUM: { name: 'MEDIUM', scale: 1.0,  radius: 22, mass: 1.0, speed: 5.6, accel: 0.6,  friction: 0.84, jumpImpulse: -10.2, gravityMul: 1.0,  color: '#38bdf8', glow: 'rgba(56,189,248,.8)', smashThreshold: 2800 },
+  HEAVY:  { name: 'HEAVY',  scale: 2.1,  radius: 38, mass: 2.8, speed: 4.8, accel: 0.28, friction: 0.94, jumpImpulse: -6.8,  gravityMul: 1.7,  color: '#f43f5e', glow: 'rgba(244,63,94,.85)', smashThreshold: 1100 }
+};
+const FORM_ORDER = ['TINY', 'MEDIUM', 'HEAVY'];
+const GRAVITY = 0.42;
+const STEP_MS = 1000 / 60;
+const COYOTE_FRAMES = 7;
+const BUFFER_FRAMES = 8;
+
+class Particle {
+  constructor(x, y, vx, vy, color, size, life, isDebris = false) {
+    Object.assign(this, { x, y, vx, vy, color, size, maxLife: life, life, isDebris });
+    this.rotation = Math.random() * Math.PI * 2;
+    this.vRot = (Math.random() - 0.5) * 0.3;
+  }
+  update() {
+    this.x += this.vx; this.y += this.vy;
+    if (this.isDebris) { this.vy += 0.35; this.vx *= 0.97; } else { this.vx *= 0.94; this.vy *= 0.94; }
+    this.rotation += this.vRot; this.life--;
+  }
+  draw(ctx, cx, cy) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
+    ctx.translate(this.x - cx, this.y - cy); ctx.rotate(this.rotation);
+    ctx.fillStyle = this.color;
+    if (this.isDebris) ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
+    else { ctx.beginPath(); ctx.arc(0, 0, this.size, 0, Math.PI * 2); ctx.fill(); }
+    ctx.restore();
+  }
+}
+
+const LEVELS = [
+  {
+    name: 'Sector 1: Mass Dynamics', spawn: { x: 120, y: 500 }, bounds: { width: 3300, height: 900 }, par: 75,
+    platforms: [
+      { x: 0, y: 580, w: 900, h: 100, type: 'ground' },
+      { x: 900, y: 580, w: 300, h: 40, type: 'ground' },
+      { x: 1200, y: 640, w: 600, h: 100, type: 'ground' },
+      { x: 1450, y: 550, w: 260, h: 50, type: 'ceiling', label: 'LOW CLEARANCE' },
+      { x: 1780, y: 640, w: 350, h: 100, type: 'ground' },
+      { x: 2000, y: 320, w: 500, h: 30, type: 'ground' },
+      { x: 2500, y: 320, w: 40, h: 360, type: 'ground' },
+      { x: 2540, y: 640, w: 700, h: 100, type: 'ground' }
+    ],
+    destructibles: [{ id: 'w1', x: 1160, y: 480, w: 45, h: 160, hp: 1, broken: false, label: 'RAM REQUIRED' }],
+    updrafts: [{ x: 1850, y: 320, w: 90, h: 320, force: -1.35 }],
+    switches: [{ id: 's1', x: 2320, y: 310, w: 90, h: 14, pressed: false, requiredMass: 2.5, targetDoor: 'd1' }],
+    doors: [{ id: 'd1', x: 2500, y: 520, w: 40, h: 120, openYOffset: 0, maxOpen: 120, open: false }],
+    hazards: [{ x: 2750, y: 630, w: 140, h: 15, type: 'spikes' }],
+    cores: [{ x: 600, y: 520, collected: false }, { x: 1570, y: 610, collected: false }, { x: 2200, y: 260, collected: false }],
+    portal: { x: 3100, y: 570, w: 50, h: 70 }
+  },
+  {
+    name: 'Sector 2: Kinetic Breach', spawn: { x: 100, y: 450 }, bounds: { width: 3600, height: 900 }, par: 100,
+    platforms: [
+      { x: 0, y: 540, w: 500, h: 100, type: 'ground' },
+      { x: 550, y: 480, w: 120, h: 25, type: 'ground' },
+      { x: 740, y: 410, w: 120, h: 25, type: 'ground' },
+      { x: 920, y: 350, w: 200, h: 25, type: 'ground' },
+      { x: 1120, y: 350, w: 500, h: 25, type: 'ground' },
+      { x: 1620, y: 380, w: 200, h: 25, type: 'ground' },
+      { x: 1820, y: 640, w: 600, h: 100, type: 'ground' },
+      { x: 2000, y: 570, w: 240, h: 30, type: 'ceiling', label: 'TINY DUCT' },
+      { x: 2500, y: 640, w: 200, h: 100, type: 'ground' },
+      { x: 2800, y: 280, w: 350, h: 30, type: 'ground' },
+      { x: 3150, y: 600, w: 400, h: 100, type: 'ground' }
+    ],
+    destructibles: [
+      { id: 'w2a', x: 1400, y: 250, w: 40, h: 100, hp: 1, broken: false, label: 'TITAN BREAK' },
+      { id: 'w2b', x: 2420, y: 540, w: 45, h: 100, hp: 1, broken: false, label: 'RAM' }
+    ],
+    updrafts: [{ x: 2620, y: 250, w: 100, h: 390, force: -1.45 }],
+    switches: [{ id: 's2', x: 2950, y: 270, w: 90, h: 14, pressed: false, requiredMass: 2.5, targetDoor: 'd2' }],
+    doors: [{ id: 'd2', x: 3150, y: 480, w: 35, h: 120, openYOffset: 0, maxOpen: 120, open: false }],
+    hazards: [
+      { x: 500, y: 650, w: 400, h: 30, type: 'spikes' },
+      { x: 1650, y: 630, w: 170, h: 15, type: 'laser' },
+      { x: 2720, y: 650, w: 420, h: 20, type: 'laser' }
+    ],
+    cores: [{ x: 800, y: 350, collected: false }, { x: 1500, y: 300, collected: false }, { x: 2120, y: 610, collected: false }],
+    portal: { x: 3450, y: 530, w: 50, h: 70 }
+  }
+];
+
+// ---------- player ----------
+class Player {
+  constructor(x, y) {
+    this.x = x; this.y = y; this.vx = 0; this.vy = 0;
+    this.targetForm = FORMS.MEDIUM; this.currentForm = FORMS.MEDIUM;
+    this.visualRadius = FORMS.MEDIUM.radius; this.visualScale = FORMS.MEDIUM.scale;
+    this.squishX = 1; this.squishY = 1; this.rotation = 0;
+    this.grounded = false; this.inUpdraft = false;
+    this.coyote = 0; this.jumpBuf = 0; this.jumpWas = false;
+    this.trailTimer = 0;
+  }
+
+  setForm(key, silent) {
+    const f = FORMS[key];
+    if (!f || this.targetForm === f) return;
+    this.targetForm = f;
+    if (!silent) { sfx.playShift(f.name); haptic(10); }
+    document.querySelectorAll('.scale-selector').forEach(b => b.classList.remove('scale-btn-active', 'border-cyan-400/80', 'bg-cyan-950/40'));
+    const btn = $('btn-scale-' + key.toLowerCase());
+    if (btn) btn.classList.add('scale-btn-active', 'border-cyan-400/80', 'bg-cyan-950/40');
+    this.squishX = 1.35; this.squishY = 0.75;
+  }
+
+  shift(dir) {
+    const i = FORM_ORDER.indexOf(this.targetForm.name);
+    const n = Math.max(0, Math.min(2, i + dir));
+    this.setForm(FORM_ORDER[n]);
+  }
+
+  getKineticEnergy() {
+    return 0.5 * this.currentForm.mass * (this.vx * this.vx + this.vy * this.vy) * 100;
+  }
+
+  update(keys, level, particles, shake, fx) {
+    this.visualRadius += (this.targetForm.radius - this.visualRadius) * 0.18;
+    this.visualScale += (this.targetForm.scale - this.visualScale) * 0.18;
+    this.currentForm = this.targetForm;
+    const r = this.visualRadius, form = this.currentForm;
+
+    // horizontal input
+    if (keys.left && !keys.right) { this.vx = Math.max(-form.speed, this.vx - form.accel); }
+    else if (keys.right && !keys.left) { this.vx = Math.min(form.speed, this.vx + form.accel); }
+    else { this.vx *= form.friction; if (Math.abs(this.vx) < 0.05) this.vx = 0; }
+
+    // gravity + updrafts
+    const g = GRAVITY * form.gravityMul;
+    this.inUpdraft = false;
+    for (const d of level.updrafts) {
+      if (this.x + r > d.x && this.x - r < d.x + d.w && this.y + r > d.y && this.y - r < d.y + d.h) {
+        this.inUpdraft = true;
+        if (form.name === 'TINY') { this.vy += d.force; if (this.vy < -9) this.vy = -9; }
+        else if (form.name === 'MEDIUM') this.vy += d.force * 0.35;
+        else this.vy += d.force * 0.05;
+      }
+    }
+    this.vy = Math.min(18, this.vy + g);
+
+    // jump: coyote time + input buffer + variable height
+    if (this.grounded) this.coyote = COYOTE_FRAMES; else if (this.coyote > 0) this.coyote--;
+    if (keys.jump && !this.jumpWas) this.jumpBuf = BUFFER_FRAMES; else if (this.jumpBuf > 0) this.jumpBuf--;
+    this.jumpWas = keys.jump;
+    if (this.jumpBuf > 0 && this.coyote > 0) {
+      this.jumpBuf = 0; this.coyote = 0;
+      this.vy = form.jumpImpulse; this.grounded = false;
+      this.squishX = 0.75; this.squishY = 1.35;
+      sfx.playJump(form.scale); haptic(6);
+      for (let i = 0; i < 6; i++) particles.push(new Particle(this.x + (Math.random() - 0.5) * r, this.y + r, (Math.random() - 0.5) * 2, Math.random() * -1.5, '#64748b', 2 + Math.random() * 2, 20));
+    }
+    if (!keys.jump && this.vy < -3 && !this.inUpdraft) this.vy += g * 0.6;
+
+    // integrate
+    this.x += this.vx; this.resolveX(level, particles, shake, fx);
+    this.y += this.vy; this.grounded = false; this.resolveY(level, particles, shake, fx);
+
+    this.rotation += this.vx / (r || 1);
+    this.squishX += (1 - this.squishX) * 0.12;
+    this.squishY += (1 - this.squishY) * 0.12;
+
+    this.trailTimer++;
+    if (this.trailTimer % (form.name === 'HEAVY' ? 3 : 5) === 0 && (Math.abs(this.vx) > 1 || Math.abs(this.vy) > 2)) {
+      particles.push(new Particle(this.x, this.y, -this.vx * 0.15 + (Math.random() - 0.5), -this.vy * 0.15 + (Math.random() - 0.5), form.color, r * 0.35, 18));
+    }
+  }
+
+  solids(level) {
+    const s = [...level.platforms];
+    for (const d of level.doors) if (!d.open) s.push({ x: d.x, y: d.y - d.openYOffset, w: d.w, h: d.h });
+    return s;
+  }
+
+  smashWall(wall, particles, shake, fx, dx, dy, mag) {
+    wall.broken = true;
+    sfx.playSmash(); shake(mag, 18);
+    fx.toast('SMASH!', '#fb7185');
+    for (let p = 0; p < 24; p++) particles.push(new Particle(wall.x + Math.random() * wall.w, wall.y + Math.random() * wall.h, (Math.random() - 0.5) * 10 + dx, (Math.random() - 0.7) * 9 + dy, '#fb7185', 4 + Math.random() * 5, 45, true));
+  }
+
+  resolveX(level, particles, shake, fx) {
+    const r = this.visualRadius, ke = this.getKineticEnergy();
+    for (const w of level.destructibles) {
+      if (w.broken) continue;
+      if (this.x + r > w.x && this.x - r < w.x + w.w && this.y + r > w.y && this.y - r < w.y + w.h) {
+        if (ke >= this.currentForm.smashThreshold && this.currentForm.name === 'HEAVY') {
+          this.smashWall(w, particles, shake, fx, Math.sign(this.vx) * 4, 0, 12);
+          this.vx *= 0.6; continue;
+        }
+        if (this.vx > 0) this.x = w.x - r; else if (this.vx < 0) this.x = w.x + w.w + r;
+        this.vx = 0;
+      }
+    }
+    for (const b of this.solids(level)) {
+      if (this.x + r > b.x && this.x - r < b.x + b.w && this.y + r > b.y && this.y - r < b.y + b.h) {
+        if (this.vx > 0) this.x = b.x - r; else if (this.vx < 0) this.x = b.x + b.w + r;
+        this.vx = 0;
+      }
+    }
+  }
+
+  resolveY(level, particles, shake, fx) {
+    const r = this.visualRadius, ke = this.getKineticEnergy();
+    for (const w of level.destructibles) {
+      if (w.broken) continue;
+      if (this.x + r > w.x && this.x - r < w.x + w.w && this.y + r > w.y && this.y - r < w.y + w.h) {
+        if (this.vy > 0 && ke >= this.currentForm.smashThreshold && this.currentForm.name === 'HEAVY') {
+          this.smashWall(w, particles, shake, fx, 0, 0, 14);
+          this.vy *= 0.3; continue;
+        }
+        if (this.vy > 0) { this.y = w.y - r; this.vy = 0; this.grounded = true; }
+        else if (this.vy < 0) { this.y = w.y + w.h + r; this.vy = 0; }
+      }
+    }
+    for (const b of this.solids(level)) {
+      if (this.x + r > b.x && this.x - r < b.x + b.w && this.y + r > b.y && this.y - r < b.y + b.h) {
+        if (this.vy > 0) {
+          this.y = b.y - r;
+          if (this.vy > 6) {
+            for (let i = 0; i < 6; i++) particles.push(new Particle(this.x + (Math.random() - 0.5) * r * 1.6, this.y + r, (Math.random() - 0.5) * 3, -Math.random() * 1.2, '#94a3b8', 2 + Math.random() * 2, 18));
+            this.squishX = 1 + this.vy * 0.035; this.squishY = 1 - this.vy * 0.035;
+            if (this.currentForm.name === 'HEAVY') shake(4, 8);
+          }
+          this.vy = 0; this.grounded = true;
+        } else if (this.vy < 0) { this.y = b.y + b.h + r; this.vy = 0; }
+      }
+    }
+  }
+
+  draw(ctx, cx, cy) {
+    ctx.save();
+    ctx.translate(this.x - cx, this.y - cy);
+    ctx.scale(this.squishX, this.squishY);
+    ctx.rotate(this.rotation);
+    const r = this.visualRadius, f = this.currentForm;
+    const glow = ctx.createRadialGradient(0, 0, r * 0.4, 0, 0, r * 1.5);
+    glow.addColorStop(0, f.glow); glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, r * 1.5, 0, Math.PI * 2); ctx.fill();
+    const lw = Math.max(2, r * 0.12);
+    ctx.lineWidth = lw; ctx.strokeStyle = f.color;
+    ctx.beginPath(); ctx.arc(0, 0, r - lw / 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.arc(0, 0, r - lw, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = f.color; ctx.beginPath(); ctx.arc(0, 0, r * 0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.4)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-r * 0.7, 0); ctx.lineTo(r * 0.7, 0); ctx.moveTo(0, -r * 0.7); ctx.lineTo(0, r * 0.7); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ---------- engine ----------
+class GameEngine {
+  constructor() {
+    this.canvas = $('game-canvas');
+    this.ctx = this.canvas.getContext('2d');
+    this.currentLevelIdx = 0;
+    this.particles = [];
+    this.camX = 0; this.camY = 0; this.shakeMag = 0; this.shakeDuration = 0;
+    this.elapsedMs = 0; this.timerRunning = false; this.completed = false;
+    this.started = false; this.dead = false; this.deadUntil = 0;
+    this.acc = 0; this.lastTs = 0; this.lastWheel = 0; this.toastTimer = 0;
+    this.keys = { left: false, right: false, jump: false };
+    this.fx = { toast: (t, c) => this.showToast(t, c) };
+    this.resize();
+    window.addEventListener('resize', () => this.resize());
+    window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 150));
+    this.bindInputs();
+    this.loadLevel(0);
+  }
+
+  resize() {
+    this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    this.vw = window.innerWidth; this.vh = window.innerHeight;
+    this.canvas.width = Math.round(this.vw * this.dpr);
+    this.canvas.height = Math.round(this.vh * this.dpr);
+  }
+
+  showToast(text, color) {
+    const t = $('toast');
+    t.textContent = text; t.style.color = color || '#38bdf8';
+    t.classList.remove('show'); void t.offsetWidth; t.classList.add('show');
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => t.classList.remove('show'), 900);
+  }
+
+  start() {
+    sfx.init();
+    if (this.started) return;
+    this.started = true;
+    $('intro').classList.add('opacity-0', 'pointer-events-none');
+    this.startTime = performance.now();
+    this.timerRunning = true;
+  }
+
+  bindInputs() {
+    const k = this.keys;
+    window.addEventListener('keydown', (e) => {
+      sfx.init();
+      if (!this.started && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); this.start(); return; }
+      if (e.code === 'KeyA' || e.key === 'ArrowLeft') k.left = true;
+      if (e.code === 'KeyD' || e.key === 'ArrowRight') k.right = true;
+      if (e.code === 'KeyW' || e.key === 'ArrowUp' || e.code === 'Space') { k.jump = true; e.preventDefault(); }
+      if (e.key === '1') this.player.setForm('TINY');
+      if (e.key === '2') this.player.setForm('MEDIUM');
+      if (e.key === '3') this.player.setForm('HEAVY');
+      if (e.key === 'Shift' && !e.repeat) this.player.setForm(FORM_ORDER[(FORM_ORDER.indexOf(this.player.targetForm.name) + 1) % 3]);
+      if (e.code === 'KeyR' && !e.repeat) this.restartLevel();
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.code === 'KeyA' || e.key === 'ArrowLeft') k.left = false;
+      if (e.code === 'KeyD' || e.key === 'ArrowRight') k.right = false;
+      if (e.code === 'KeyW' || e.key === 'ArrowUp' || e.code === 'Space') k.jump = false;
+    });
+    const clearKeys = () => { k.left = k.right = k.jump = false; };
+    window.addEventListener('blur', clearKeys);
+    document.addEventListener('visibilitychange', clearKeys);
+
+    window.addEventListener('wheel', (e) => {
+      sfx.init();
+      const t = performance.now();
+      if (t - this.lastWheel < 180) return;
+      this.lastWheel = t;
+      this.player.shift(e.deltaY > 0 ? 1 : -1);
+    }, { passive: true });
+
+    // swipe up/down on the playfield = shift mass (touch)
+    let sy = null, sid = null;
+    this.canvas.addEventListener('pointerdown', (e) => { sfx.init(); if (e.pointerType === 'touch') { sy = e.clientY; sid = e.pointerId; } });
+    this.canvas.addEventListener('pointerup', (e) => {
+      if (e.pointerId !== sid || sy === null) return;
+      const dy = e.clientY - sy; sy = null;
+      if (Math.abs(dy) >= 60) this.player.shift(dy > 0 ? 1 : -1);
+    });
+    this.canvas.addEventListener('pointercancel', () => { sy = null; });
+
+    ['tiny', 'medium', 'heavy'].forEach(n => $('btn-scale-' + n).addEventListener('click', () => { sfx.init(); this.player.setForm(n.toUpperCase()); }));
+
+    $('btn-audio').addEventListener('click', () => {
+      sfx.init(); sfx.muted = !sfx.muted;
+      $('audio-icon-on').classList.toggle('hidden', sfx.muted);
+      $('audio-icon-off').classList.toggle('hidden', !sfx.muted);
+    });
+    $('btn-reset').addEventListener('click', () => { sfx.init(); this.restartLevel(); });
+    $('intro-btn').addEventListener('click', () => this.start());
+
+    $('modal-action-btn').addEventListener('click', () => {
+      $('modal-overlay').classList.add('opacity-0', 'pointer-events-none');
+      this.loadLevel(this.currentLevelIdx + 1 < LEVELS.length ? this.currentLevelIdx + 1 : 0);
+    });
+
+    // Touch buttons: pointer events + capture so slides/multi-touch never stick; haptic on press
+    const bind = (id, press, release) => {
+      const el = $(id);
+      el.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); sfx.init();
+        try { el.setPointerCapture(e.pointerId); } catch (_) {}
+        el.classList.add('down'); haptic(8); press();
+      });
+      ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => el.addEventListener(t, (e) => {
+        e.preventDefault(); el.classList.remove('down'); release();
+      }));
+      el.addEventListener('contextmenu', (e) => e.preventDefault());
+    };
+    bind('touch-left', () => { k.left = true; }, () => { k.left = false; });
+    bind('touch-right', () => { k.right = true; }, () => { k.right = false; });
+    bind('touch-jump', () => { k.jump = true; }, () => { k.jump = false; });
+  }
+
+  loadLevel(idx) {
+    this.currentLevelIdx = idx;
+    this.level = JSON.parse(JSON.stringify(LEVELS[idx]));
+    this.player = new Player(this.level.spawn.x, this.level.spawn.y);
+    this.particles = [];
+    this.startTime = performance.now();
+    this.elapsedMs = 0;
+    this.timerRunning = this.started;
+    this.completed = false; this.dead = false;
+    this.perfectLandings = 0;
+    this.camX = this.player.x - this.vw * 0.4;
+    this.camY = this.player.y - this.vh * 0.55;
+    $('lvl-display').textContent = `SECTOR ${idx + 1}`;
+    $('flash').style.opacity = 0;
+    this.updateBestDisplay();
+    this.player.setForm('MEDIUM', true);
+  }
+
+  restartLevel() { this.loadLevel(this.currentLevelIdx); }
+
+  triggerShake(mag, dur) {
+    this.shakeMag = mag; this.shakeDuration = dur;
+    haptic(Math.min(60, Math.round(mag * 4)));
+  }
+
+  die() {
+    if (this.dead) return;
+    this.dead = true; this.deadUntil = performance.now() + 500;
+    sfx.playLaserDeath(); this.triggerShake(10, 15);
+    $('flash').style.opacity = 1;
+    haptic([40, 30, 60]);
+    const p = this.player;
+    for (let i = 0; i < 30; i++) this.particles.push(new Particle(p.x, p.y, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12, p.currentForm.color, 3 + Math.random() * 4, 40, true));
+  }
+
+  updateBestDisplay() {
+    const best = store.get(`scaleshift_best_lvl_${this.currentLevelIdx}`);
+    $('best-display').textContent = best ? this.formatTime(parseInt(best)) : '--:--.-';
+  }
+
+  formatTime(ms) {
+    const s = Math.floor(ms / 1000);
+    return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}.${Math.floor((ms % 1000) / 100)}`;
+  }
+
+  updateEnvironment() {
+    if (!this.player || this.completed || this.dead) return;
+    const p = this.player, r = p.visualRadius;
+
+    for (const sw of this.level.switches) {
+      const over = p.x + r > sw.x && p.x - r < sw.x + sw.w && p.y + r >= sw.y - 2 && p.y - r <= sw.y + sw.h;
+      if (over && p.currentForm.mass >= sw.requiredMass && !sw.pressed) {
+        sw.pressed = true; sfx.playSwitch(); this.triggerShake(5, 10); this.showToast('GATE UNLOCKED', '#34d399');
+      }
+    }
+    for (const d of this.level.doors) {
+      const linked = this.level.switches.filter(s => s.targetDoor === d.id);
+      if (linked.length && linked.every(s => s.pressed)) {
+        d.open = true;
+        if (d.openYOffset < d.maxOpen) d.openYOffset += 3.5;
+      }
+    }
+    for (const h of this.level.hazards) {
+      if (p.x + r > h.x && p.x - r < h.x + h.w && p.y + r > h.y && p.y - r < h.y + h.h) { this.die(); return; }
+    }
+    if (p.y > this.level.bounds.height + 150) { this.die(); return; }
+
+    let got = 0;
+    for (const c of this.level.cores) {
+      if (!c.collected) {
+        if (Math.hypot(p.x - c.x, p.y - c.y) < r + 18) {
+          c.collected = true; sfx.playCoin(); haptic(15); got++;
+          for (let i = 0; i < 15; i++) this.particles.push(new Particle(c.x, c.y, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, '#facc15', 3 + Math.random() * 2, 25));
+        }
+      }
+    }
+    const collected = this.level.cores.filter(c => c.collected).length;
+    $('cores-display').textContent = `${collected}/${this.level.cores.length}`;
+
+    const port = this.level.portal;
+    if (p.x > port.x && p.x < port.x + port.w && p.y > port.y && p.y < port.y + port.h) this.win(collected);
+  }
+
+  win(collected) {
+    this.completed = true; this.timerRunning = false;
+    const total = this.level.cores.length;
+    const secs = this.elapsedMs / 1000;
+    const perfect = collected === total && secs <= this.level.par;
+    const rating = perfect ? 'PERFECT' : collected === total ? 'GREAT' : 'GOOD';
+    sfx.playCoin(); if (perfect) sfx.playPerfect(); haptic(perfect ? [20, 40, 20, 40, 60] : 30);
+
+    const key = `scaleshift_best_lvl_${this.currentLevelIdx}`;
+    const prev = store.get(key);
+    if (!prev || this.elapsedMs < parseInt(prev)) store.set(key, String(Math.round(this.elapsedMs)));
+    this.updateBestDisplay();
+
+    const last = this.currentLevelIdx + 1 >= LEVELS.length;
+    $('modal-title').textContent = last ? 'MISSION COMPLETED!' : 'SECTOR SYNCHRONIZED';
+    $('modal-desc').textContent = last ? 'All test chambers stabilized at optimal mass resonance!' : 'Security gate breached. Proceeding to next quarantine zone.';
+    $('modal-time').textContent = this.formatTime(this.elapsedMs);
+    $('modal-cores').textContent = `${collected}/${total}`;
+    $('modal-smashes').textContent = this.level.destructibles.filter(w => w.broken).length;
+    const rt = $('modal-rating');
+    rt.textContent = perfect ? `PERFECT ★ (par ${this.level.par}s)` : rating;
+    rt.style.color = perfect ? '#fde047' : rating === 'GREAT' ? '#34d399' : '#fbbf24';
+    $('modal-action-btn').textContent = last ? 'REPLAY CAMPAIGN ↺' : 'NEXT SECTOR ➔';
+    $('modal-overlay').classList.remove('opacity-0', 'pointer-events-none');
+  }
+
+  step() {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      this.particles[i].update();
+      if (this.particles[i].life <= 0) this.particles.splice(i, 1);
+    }
+    if (!this.started) return;
+    if (this.dead) { if (performance.now() > this.deadUntil) this.restartLevel(); return; }
+    this.player.update(this.keys, this.level, this.particles, (m, d) => this.triggerShake(m, d), this.fx);
+    this.updateEnvironment();
+  }
+
+  render() {
+    const ctx = this.ctx, w = this.vw, h = this.vh;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+
+    const tx = this.player.x - w * 0.4 + this.player.vx * 10;
+    const ty = this.player.y - h * 0.55;
+    this.camX += (tx - this.camX) * 0.08;
+    this.camY += (ty - this.camY) * 0.08;
+    this.camX = Math.max(0, Math.min(this.camX, Math.max(0, this.level.bounds.width - w)));
+    this.camY = Math.max(-200, Math.min(this.camY, Math.max(-200, this.level.bounds.height - h)));
+
+    let sx = 0, sy = 0;
+    if (this.shakeDuration > 0) {
+      sx = (Math.random() - 0.5) * this.shakeMag; sy = (Math.random() - 0.5) * this.shakeMag;
+      this.shakeDuration--;
+    }
+    const cx = this.camX + sx, cy = this.camY + sy;
+
+    ctx.fillStyle = '#060a14'; ctx.fillRect(0, 0, w, h);
+
+    // parallax grid
+    ctx.strokeStyle = 'rgba(30,41,59,.45)'; ctx.lineWidth = 1;
+    const gs = 60, ox = -(cx * 0.4) % gs, oy = -(cy * 0.4) % gs;
+    ctx.beginPath();
+    for (let x = ox; x < w; x += gs) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+    for (let y = oy; y < h; y += gs) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+    ctx.stroke();
+
+    const tm = performance.now();
+    // updrafts
+    for (const d of this.level.updrafts) {
+      const g = ctx.createLinearGradient(0, d.y - cy + d.h, 0, d.y - cy);
+      g.addColorStop(0, 'rgba(56,189,248,.05)'); g.addColorStop(.5, 'rgba(56,189,248,.22)'); g.addColorStop(1, 'rgba(56,189,248,.02)');
+      ctx.fillStyle = g; ctx.fillRect(d.x - cx, d.y - cy, d.w, d.h);
+      ctx.strokeStyle = 'rgba(56,189,248,.6)'; ctx.lineWidth = 1.5;
+      const t = tm * 0.003;
+      ctx.beginPath();
+      for (let i = 0; i < 4; i++) {
+        const x = d.x - cx + (i + 0.5) * (d.w / 4);
+        const y = d.y - cy + d.h - ((t * 80 + i * 50) % d.h);
+        ctx.moveTo(x, y); ctx.lineTo(x, y - 24);
+      }
+      ctx.stroke();
+    }
+
+    // platforms
+    for (const p of this.level.platforms) {
+      const rx = p.x - cx, ry = p.y - cy;
+      if (rx > w || rx + p.w < 0) continue;
+      ctx.fillStyle = '#0f172a'; ctx.fillRect(rx, ry, p.w, p.h);
+      ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(rx, ry); ctx.lineTo(rx + p.w, ry); ctx.stroke();
+      ctx.strokeStyle = 'rgba(56,189,248,.15)'; ctx.lineWidth = 1;
+      ctx.strokeRect(rx + 2, ry + 2, p.w - 4, p.h - 4);
+      if (p.label) { ctx.fillStyle = '#64748b'; ctx.font = '10px monospace'; ctx.fillText(p.label, rx + 10, ry + 18); }
+    }
+
+    // switches
+    for (const s of this.level.switches) {
+      const x = s.x - cx, y = s.y - cy, c = s.pressed ? '#10b981' : '#f43f5e';
+      ctx.fillStyle = c; ctx.shadowColor = c; ctx.shadowBlur = s.pressed ? 12 : 5;
+      ctx.fillRect(x, y + (s.pressed ? 6 : 0), s.w, s.h - (s.pressed ? 6 : 0));
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#94a3b8'; ctx.font = '9px Orbitron, sans-serif';
+      ctx.fillText(s.pressed ? 'LOCKED [ON]' : 'HEAVY MASS PAD', x - 5, y - 8);
+    }
+
+    // doors
+    for (const d of this.level.doors) {
+      const x = d.x - cx, y = d.y - d.openYOffset - cy;
+      ctx.fillStyle = '#1e293b'; ctx.fillRect(x, y, d.w, d.h);
+      ctx.strokeStyle = '#eab308'; ctx.lineWidth = 3; ctx.strokeRect(x, y, d.w, d.h);
+      ctx.fillStyle = '#facc15'; ctx.font = '10px monospace'; ctx.fillText('GATE', x + 4, y + 25);
+    }
+
+    // breakable walls
+    for (const wl of this.level.destructibles) {
+      if (wl.broken) continue;
+      const x = wl.x - cx, y = wl.y - cy;
+      ctx.fillStyle = '#881337'; ctx.fillRect(x, y, wl.w, wl.h);
+      ctx.strokeStyle = '#f43f5e'; ctx.lineWidth = 2; ctx.strokeRect(x, y, wl.w, wl.h);
+      ctx.strokeStyle = 'rgba(255,255,255,.45)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x + 5, y + 10); ctx.lineTo(x + wl.w * .6, y + wl.h * .4); ctx.lineTo(x + wl.w * .3, y + wl.h * .7); ctx.lineTo(x + wl.w - 8, y + wl.h - 12); ctx.stroke();
+      if (wl.label) { ctx.fillStyle = '#fda4af'; ctx.font = '9px Orbitron, sans-serif'; ctx.fillText(wl.label, x - 15, y - 8); }
+    }
+
+    // hazards
+    for (const hz of this.level.hazards) {
+      const x = hz.x - cx, y = hz.y - cy;
+      if (hz.type === 'laser') {
+        const pulse = 0.25 + Math.sin(tm * 0.012) * 0.1;
+        ctx.fillStyle = `rgba(239,68,68,${pulse})`; ctx.fillRect(x, y, hz.w, hz.h);
+        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 10;
+        ctx.strokeRect(x, y + hz.h / 2, hz.w, 1); ctx.shadowBlur = 0;
+      } else {
+        ctx.fillStyle = '#e11d48';
+        const n = Math.floor(hz.w / 14);
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) { ctx.moveTo(x + i * 14, y + hz.h); ctx.lineTo(x + i * 14 + 7, y); ctx.lineTo(x + (i + 1) * 14, y + hz.h); }
+        ctx.fill();
+      }
+    }
+
+    // cores
+    const nt = tm * 0.005;
+    for (const c of this.level.cores) {
+      if (c.collected) continue;
+      ctx.save();
+      ctx.translate(c.x - cx, c.y - cy + Math.sin(nt + c.x) * 5); ctx.rotate(nt * 0.5);
+      ctx.shadowColor = '#facc15'; ctx.shadowBlur = 15; ctx.fillStyle = '#facc15';
+      ctx.fillRect(-8, -8, 16, 16);
+      ctx.restore();
+    }
+
+    // portal
+    const pt = this.level.portal, px = pt.x - cx, py = pt.y - cy;
+    ctx.save();
+    ctx.shadowColor = '#06b6d4'; ctx.shadowBlur = 20;
+    const pg = ctx.createLinearGradient(px, py, px + pt.w, py + pt.h);
+    pg.addColorStop(0, '#06b6d4'); pg.addColorStop(1, '#3b82f6');
+    ctx.fillStyle = pg; ctx.fillRect(px, py, pt.w, pt.h);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(px + pt.w / 2, py + pt.h / 2, pt.w * .35, pt.h * .42, nt * .8, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+
+    for (const p of this.particles) p.draw(ctx, cx, cy);
+    if (!this.dead) this.player.draw(ctx, cx, cy);
+    this.updateHUD();
+  }
+
+  updateHUD() {
+    if (this.timerRunning) this.elapsedMs = performance.now() - this.startTime;
+    $('time-display').textContent = this.formatTime(this.elapsedMs);
+    const f = this.player.currentForm;
+    $('mass-label').textContent = `${f.mass.toFixed(2)} M`;
+    $('mass-label').style.color = f.color;
+    $('speed-label').textContent = Math.hypot(this.player.vx, this.player.vy).toFixed(1);
+    const ke = Math.round(this.player.getKineticEnergy());
+    $('ke-val').textContent = `${ke} J`;
+    $('ke-bar').style.width = `${Math.min(100, ke / 3000 * 100)}%`;
+    $('ke-mark').style.left = `${Math.min(100, f.smashThreshold / 3000 * 100)}%`;
+    $('ke-mark').style.display = f.name === 'TINY' ? 'none' : 'block';
+    $('smash-ready-tag').classList.toggle('opacity-0', !(ke >= f.smashThreshold && f.name === 'HEAVY'));
+  }
+
+  // fixed 60 Hz physics, any display refresh rate
+  loop(now) {
+    const dt = Math.min(100, now - (this.lastTs || now));
+    this.lastTs = now;
+    this.acc += dt;
+    while (this.acc >= STEP_MS) { this.step(); this.acc -= STEP_MS; }
+    this.render();
+    requestAnimationFrame((t) => this.loop(t));
+  }
+}
+
+window.addEventListener('load', () => {
+  const game = new GameEngine();
+  requestAnimationFrame((t) => game.loop(t));
+});
+</script>
+</body>
+</html>
